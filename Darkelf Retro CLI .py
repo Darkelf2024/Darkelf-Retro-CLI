@@ -16,7 +16,7 @@ from rich.table import Table
 # ============================================================
 
 APP_NAME = "Darkelf Retro CLI"
-APP_VERSION = "4.3"
+APP_VERSION = "4.4"
 
 DDG_LITE = "https://lite.duckduckgo.com/lite/?q="
 DEFAULT_MODEL = "mistral"
@@ -33,7 +33,25 @@ VGHF_SEARCH = "https://library.gamehistory.org/"           # public catalog UI
 
 os.makedirs(BASE_DIR, exist_ok=True)
 
-console = Console(width=100)
+console = Console()
+
+# ============================================================
+# ROM CONFIG
+# ============================================================
+
+ROM_CACHE_DIR = os.path.join(BASE_DIR, "rom_cache")
+os.makedirs(ROM_CACHE_DIR, exist_ok=True)
+
+ROM_EXTENSIONS = (
+    ".iso", ".bin", ".cue", ".chd", ".cso",
+    ".zip", ".7z", ".rar",
+    ".nes", ".sfc", ".smc",
+    ".gb", ".gbc", ".gba",
+    ".n64", ".z64", ".v64",
+    ".gcm", ".wbfs", ".wad",
+    ".md", ".gen", ".sms",
+    ".fds", ".a26", ".a78",
+)
 
 # ============================================================
 # UTIL
@@ -54,6 +72,73 @@ def is_int(s: str) -> bool:
         return True
     except Exception:
         return False
+        
+# ============================================================
+# ROM + PLATFORM DETECTION
+# ============================================================
+
+PLATFORM_KEYWORDS = {
+    "PS2": ["ps2", "playstation 2"],
+    "PS1": ["psx", "ps1", "playstation"],
+    "GAMECUBE": ["gamecube", "gc"],
+    "WII": ["wii"],
+    "DREAMCAST": ["dreamcast", "dc"],
+    "SATURN": ["saturn"],
+    "PSP": ["psp"],
+}
+
+def detect_platform(name: str):
+    lname = name.lower()
+    for plat, keys in PLATFORM_KEYWORDS.items():
+        if any(k in lname for k in keys):
+            return plat
+    return "UNKNOWN"
+
+def scan_roms(path: str):
+    roms = []
+    for root, _, files in os.walk(path):
+        for f in files:
+            if f.lower().endswith(ROM_EXTENSIONS):
+                roms.append(os.path.join(root, f))
+    return roms
+
+def rom_metadata(path: str):
+    return {
+        "file": os.path.basename(path),
+        "platform": detect_platform(os.path.basename(path)),
+        "size_mb": round(os.path.getsize(path) / 1024 / 1024, 2),
+        "path": path
+    }
+
+# ============================================================
+# ANDROID DEVICE DETECTION (ADB)
+# ============================================================
+
+def adb_detect():
+    try:
+        out = subprocess.check_output(
+            ["adb", "shell", "getprop"],
+            stderr=subprocess.DEVNULL,
+            text=True
+        )
+
+        def prop(k):
+            for line in out.splitlines():
+                if k in line:
+                    return line.split(":")[-1].strip(" []")
+            return "Unknown"
+
+        return {
+            "device": prop("ro.product.model"),
+            "cpu": prop("ro.board.platform"),
+            "serial": prop("ro.serialno")
+        }
+    except Exception:
+        return {
+            "device": "ADB not detected",
+            "cpu": "Unknown",
+            "serial": "N/A"
+        }
 
 # ============================================================
 # OLLAMA BACKGROUND MANAGER (ONE TERMINAL)
@@ -61,8 +146,9 @@ def is_int(s: str) -> bool:
 
 class OllamaManager:
     """
-    Ensures Ollama daemon is available. If not running, starts `ollama serve`
-    silently in the background (same terminal session).
+    Ensures Ollama daemon is available.
+    If not running, starts `ollama serve` detached from this process
+    so it survives terminal/app exit (best-effort across OSes).
     """
     def __init__(self):
         self.started_here = False
@@ -73,11 +159,36 @@ class OllamaManager:
                 ["ollama", "list"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                timeout=3
+                timeout=2.5
             )
             return p.returncode == 0
         except Exception:
             return False
+
+    def _start_detached(self):
+        # Cross-platform detachment:
+        # - Windows: DETACHED_PROCESS + CREATE_NEW_PROCESS_GROUP
+        # - POSIX: start_new_session=True (similar to setsid)
+        if os.name == "nt":
+            DETACHED_PROCESS = 0x00000008
+            CREATE_NEW_PROCESS_GROUP = 0x00000200
+            return subprocess.Popen(
+                ["ollama", "serve"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                close_fds=True
+            )
+        else:
+            return subprocess.Popen(
+                ["ollama", "serve"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+                close_fds=True
+            )
 
     def ensure_running(self):
         if not which("ollama"):
@@ -88,18 +199,14 @@ class OllamaManager:
             ))
             sys.exit(1)
 
+        # Already running?
         if self.is_running():
             return
 
-        # Start daemon quietly
+        # Start daemon detached
         try:
-            subprocess.Popen(
-                ["ollama", "serve"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
+            self._start_detached()
             self.started_here = True
-            time.sleep(1.2)
         except Exception as e:
             console.print(Panel(
                 f"Failed to start Ollama server.\n{e}",
@@ -107,6 +214,21 @@ class OllamaManager:
                 border_style="red"
             ))
             sys.exit(1)
+
+        # Wait until it is actually ready (instead of a blind sleep)
+        t0 = time.time()
+        while time.time() - t0 < 10.0:
+            if self.is_running():
+                return
+            time.sleep(0.25)
+
+        console.print(Panel(
+            "Ollama was started but did not become ready within 10 seconds.\n"
+            "Try running `ollama serve` manually once to see any errors.",
+            title="Darkelf Retro AI Error",
+            border_style="red"
+        ))
+        sys.exit(1)
 
 # ============================================================
 # DARKELF RETRO AI (STREAMING)
@@ -139,7 +261,7 @@ class DarkelfRetroAI:
                 ["ollama", "run", self.model],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
                 text=True,
                 bufsize=1
             )
@@ -162,6 +284,82 @@ class DarkelfRetroAI:
             print("\n⛔ Darkelf Retro AI interrupted.")
         except Exception as e:
             console.print(Panel(str(e), title="Darkelf Retro AI Error", border_style="red"))
+            
+# ============================================================
+# ROM AI CACHE
+# ============================================================
+
+def rom_cache_key(name):
+    return os.path.join(ROM_CACHE_DIR, name.replace(" ", "_") + ".json")
+
+def load_rom_cache(name):
+    p = rom_cache_key(name)
+    if os.path.exists(p):
+        return json.load(open(p))["summary"]
+    return None
+
+def save_rom_cache(name, text):
+    json.dump({"summary": text}, open(rom_cache_key(name), "w"), indent=2)
+
+# ============================================================
+# EMULATOR RECOMMENDATIONS
+# ============================================================
+
+def emulator_recommendation(platform, cpu):
+    cpu = cpu.lower()
+    if platform == "PS2":
+        return {
+            "Emulator": "AetherSX2",
+            "Renderer": "Vulkan",
+            "EE Cycle Rate": "75%",
+            "GPU Threads": "Enabled" if "snapdragon" in cpu else "Disabled"
+        }
+    if platform == "GAMECUBE":
+        return {
+            "Emulator": "Dolphin",
+            "Backend": "Vulkan",
+            "Shader Compilation": "Hybrid"
+        }
+    return {"Emulator": "Unknown"}
+
+# ============================================================
+# MENU
+# ============================================================
+
+class Menu:
+    @staticmethod
+    def main():
+        table = Table(title="Darkelf Retro Launcher", show_lines=True)
+        table.add_column("#", style="cyan", width=4)
+        table.add_column("Action")
+
+        table.add_row("1", "Web Search (DDG Lite)")
+        table.add_row("2", "Ask Darkelf Retro AI")
+        table.add_row("3", "Retro Archives Lookup")
+        table.add_row("4", "View Search History")
+        table.add_row("5", "ROM Tools / Game Intelligence")
+        table.add_row("6", "Help / Hotkeys")
+        table.add_row("0", "Exit")
+
+        console.print(table)
+
+    @staticmethod
+    def help():
+        console.print(Panel(
+            "\n".join([
+                "Hotkeys / Tips:",
+                "• In lists, type a number (e.g., 1) to open that item.",
+                "• Web Search: use DDG Lite to find guides, wikis, manuals, maps.",
+                "• Archives: searches Internet Archive (magazines, guides, manuals, ephemera).",
+                "• VGHF: opens a browser-style search via DDG for the VGHF library.",
+                "",
+                "Darkelf Retro AI Tips:",
+                "• Ask for release dates, dev trivia, ports, versions, region differences.",
+                "• Ask for 'beginner route', 'best starter loadout', 'boss tips', etc.",
+            ]),
+            title="Help",
+            border_style="cyan"
+        ))
 
 # ============================================================
 # SEARCH ENGINE (DDG Lite)
@@ -240,44 +438,6 @@ class InternetArchive:
         r = self.session.get(IA_METADATA + identifier, timeout=20)
         r.raise_for_status()
         return r.json()
-
-# ============================================================
-# MENUS
-# ============================================================
-
-class Menu:
-    @staticmethod
-    def main():
-        table = Table(title="Darkelf Retro Launcher", show_lines=True)
-        table.add_column("#", style="cyan", width=4)
-        table.add_column("Action", style="white")
-
-        table.add_row("1", "Web Search (DDG Lite)")
-        table.add_row("2", "Ask Darkelf Retro AI")
-        table.add_row("3", "Retro Archives Lookup (Internet Archive + VGHF)")
-        table.add_row("4", "View Search History")
-        table.add_row("5", "Help / Hotkeys")
-        table.add_row("0", "Exit")
-
-        console.print(table)
-
-    @staticmethod
-    def help():
-        console.print(Panel(
-            "\n".join([
-                "Hotkeys / Tips:",
-                "• In lists, type a number (e.g., 1) to open that item.",
-                "• Web Search: use DDG Lite to find guides, wikis, manuals, maps.",
-                "• Archives: searches Internet Archive (magazines, guides, manuals, ephemera).",
-                "• VGHF: opens a browser-style search via DDG for the VGHF library.",
-                "",
-                "Darkelf Retro AI Tips:",
-                "• Ask for release dates, dev trivia, ports, versions, region differences.",
-                "• Ask for 'beginner route', 'best starter loadout', 'boss tips', etc.",
-            ]),
-            title="Help",
-            border_style="cyan"
-        ))
 
 # ============================================================
 # APP
@@ -520,7 +680,64 @@ class DarkelfCLI:
         ])
         console.print(Panel(body, title="Archive Item", border_style="yellow"))
         press_enter("Press Enter to return...")
+        
+    # -----------------------
+    # ROM FLOW
+    # -----------------------
+    def rom_flow(self):
+        clear()
+        self.banner()
+        path = input("ROM directory> ").strip()
+        roms = scan_roms(path)
 
+        if not roms:
+            console.print("No ROMs found.")
+            press_enter()
+            return
+
+        for i, r in enumerate(roms, 1):
+            console.print(f"[{i}] {os.path.basename(r)}")
+
+        sel = input("\nSelect ROM #> ").strip()
+        if not is_int(sel):
+            return
+
+        rom = rom_metadata(roms[int(sel) - 1])
+        device = adb_detect()
+
+        cached = load_rom_cache(rom["file"])
+        if cached:
+            console.print(Panel(wrap(cached), title="Cached Game Intelligence"))
+        else:
+            prompt = f"""
+Analyze this ROM and provide:
+- Game title
+- Platform
+- Release year
+- Developer
+- Android emulator recommendation
+- Performance tips
+
+ROM: {rom}
+Android Device: {device}
+"""
+            clear()
+            self.banner()
+            self.ai.stream(prompt)
+            text = input("\n\nSave summary? (y/n)> ").lower()
+            if text == "y":
+                save_rom_cache(rom["file"], prompt)
+
+        cfg = emulator_recommendation(rom["platform"], device["cpu"])
+        table = Table(title="Emulator Recommendation")
+        table.add_column("Setting")
+        table.add_column("Value")
+        for k, v in cfg.items():
+            table.add_row(k, v)
+        console.print(table)
+        press_enter()
+
+    # -----------------------
     # -----------------------
     # History flow
     # -----------------------
@@ -562,6 +779,8 @@ class DarkelfCLI:
             elif choice == "4":
                 self.history_flow()
             elif choice == "5":
+                self.rom_flow()
+            elif choice == "6":
                 clear()
                 self.banner()
                 Menu.help()

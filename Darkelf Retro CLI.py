@@ -14,15 +14,211 @@ from shutil import which
 from bs4 import BeautifulSoup
 from rich.console import Console
 from rich.panel import Panel
+from rich.console import Group
 from rich.table import Table
+from rich.padding import Padding
+import shutil
+import termios
+import tty
 
+def flush_stdin():
+    try:
+        termios.tcflush(sys.stdin, termios.TCIFLUSH)
+    except Exception:
+        pass
+
+current_url = None
+back_stack = []
+forward_stack = []
+current_links = []
+
+# ============================================================
+# INPUT
+# ============================================================
+
+def read_key():
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        ch = sys.stdin.read(1)
+        if ch == "\x1b":
+            seq = ch
+            while True:
+                nxt = sys.stdin.read(1)
+                seq += nxt
+                if nxt.isalpha():
+                    break
+            return seq
+        return ch
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        
+# ============================================================
+# PAGER (LEGACY — STILL USED BY AI / ARCHIVES / ROM FLOWS)
+# ============================================================
+
+def manual_pager(text, page_height=None):
+    """
+    Simple, portable pager.
+    - No curses
+    - Used by non-browser views (AI, archives, ROM info)
+    """
+    lines = []
+    width = shutil.get_terminal_size((100, 20)).columns - 2
+
+    for line in text.splitlines():
+        wrapped = textwrap.wrap(line, width) or [""]
+        lines.extend(wrapped)
+
+    height = page_height or (shutil.get_terminal_size((100, 20)).lines - 2)
+    pos = 0
+    max_pos = max(0, len(lines) - height)
+
+    while True:
+        clear()
+
+        for line in lines[pos:pos + height]:
+            print(line)
+
+        if max_pos == 0:
+            print("\n[q] exit")
+        else:
+            print("\n↑/↓ scroll | n/p page | q exit")
+
+        key = read_key()
+
+        if key in ("q", "Q", "\x1b"):
+            break
+        elif key in ("\x1b[A", "k"):
+            pos = max(0, pos - 1)
+        elif key in ("\x1b[B", "j"):
+            pos = min(max_pos, pos + 1)
+        elif key in ("n", "N"):
+            pos = min(max_pos, pos + height)
+        elif key in ("p", "P"):
+            pos = max(0, pos - height)
+
+# ============================================================
+# BROWSER PAGE RENDER (NO PAGER)
+# ============================================================
+
+def render_page(title, url, body):
+    clear()
+    width = shutil.get_terminal_size((100, 20)).columns - 4
+
+    print(f"\033[92m{title}\033[0m")
+    print(url)
+    print()
+
+    for para in body.split("\n\n"):
+        print(textwrap.fill(para, width))
+        print()
+
+    if current_links:
+        print("-" * width)
+        print("Links:")
+        for i, (text, href) in enumerate(current_links[:9], 1):
+            label = text[:60] if text else href
+            print(f"[{i}] {label}")
+    
+    print("-" * width)
+    print("[b] Back   [f] Forward   [q] Quit   [1–9] Open link")
+
+def load_and_render(url):
+    global current_links
+
+    try:
+        r = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=10)
+    except Exception as e:
+        render_page("Error", url, str(e))
+        return
+
+    soup = BeautifulSoup(r.text, "html.parser")
+    title = soup.title.get_text(strip=True) if soup.title else url
+
+    paras = [
+        p.get_text(" ", strip=True)
+        for p in soup.find_all("p")
+        if p.get_text(strip=True)
+    ]
+
+    body = "\n\n".join(paras[:6]) if paras else "[No readable content]"
+
+    # 🔥 Extract links
+    links = []
+    for a in soup.find_all("a", href=True):
+        href = a["href"].strip()
+        text = a.get_text(" ", strip=True)
+
+        if not href:
+            continue
+        if href.startswith("#"):
+            continue
+        if href.startswith("/"):
+            href = requests.compat.urljoin(url, href)
+
+        links.append((text, href))
+
+    current_links = links[:9]  # limit to 1–9
+
+    render_page(title, url, body)
+
+def open_page(url):
+    global current_url, back_stack, forward_stack
+
+    if current_url:
+        back_stack.append(current_url)
+        forward_stack.clear()
+
+    current_url = url
+    load_and_render(url)
+
+    termios.tcflush(sys.stdin, termios.TCIFLUSH)  # 🔥 REQUIRED
+    browser_loop()
+
+def go_back():
+    global current_url
+    if not back_stack:
+        print("(no back history)")
+        return
+    forward_stack.append(current_url)
+    current_url = back_stack.pop()
+    load_and_render(current_url)
+
+def go_forward():
+    global current_url
+    if not forward_stack:
+        print("(no forward history)")
+        return
+    back_stack.append(current_url)
+    current_url = forward_stack.pop()
+    load_and_render(current_url)
+
+def browser_loop():
+    while True:
+        k = read_key()
+
+        if k in ("q", "Q"):
+            break
+
+        elif k in ("b", "B"):
+            go_back()
+
+        elif k in ("f", "F"):
+            go_forward()
+
+        elif k.isdigit():
+            idx = int(k) - 1
+            if 0 <= idx < len(current_links):
+                open_page(current_links[idx][1])
 
 # ============================================================
 # CONFIG
 # ============================================================
 
 APP_NAME = "Darkelf Retro CLI"
-APP_VERSION = "4.6"
+APP_VERSION = "4.4"
 
 DDG_LITE = "https://lite.duckduckgo.com/lite/?q="
 DEFAULT_MODEL = "mistral"
@@ -63,7 +259,9 @@ ROM_EXTENSIONS = (
 # ============================================================
 
 def wrap(text: str, width: int = 96) -> str:
-    return "\n".join(textwrap.wrap(text, width))
+    if not isinstance(text, str):
+        text = " ".join(text)
+    return textwrap.fill(text, width)
 
 def clear():
     os.system("cls" if os.name == "nt" else "clear")
@@ -77,9 +275,9 @@ def is_int(s: str) -> bool:
         return True
     except Exception:
         return False
-        
+
 # ============================================================
-# ADD: ROM HASHING (CRC32 / MD5 / SHA1)
+# ROM HASHING
 # ============================================================
 
 def hash_rom_file(path, blocksize=1024 * 1024):
@@ -91,6 +289,10 @@ def hash_rom_file(path, blocksize=1024 * 1024):
                 break
             crc = zlib.crc32(chunk, crc)
     return f"{crc & 0xffffffff:08X}"
+
+# ============================================================
+# (rest of file unchanged)
+# ============================================================
 
 # ============================================================
 # ROM + PLATFORM DETECTION
@@ -531,6 +733,41 @@ def emulator_recommendation(platform, cpu):
             "Shader Compilation": "Hybrid"
         }
     return {"Emulator": "Unknown"}
+    
+# ============================================================
+# PAGE PREVIEW FETCHER (DDG Lite fallback)
+# ============================================================
+
+def fetch_page_preview(url, timeout=6):
+    try:
+        r = requests.get(
+            url,
+            timeout=timeout,
+            headers={"User-Agent": USER_AGENT}
+        )
+        soup = BeautifulSoup(r.text, "html.parser")
+
+        # Page title
+        title = soup.title.string.strip() if soup.title else ""
+
+        # Try meta description first
+        desc = ""
+        meta = soup.find("meta", attrs={"name": "description"})
+        if meta and meta.get("content"):
+            desc = meta["content"].strip()
+
+        # Fallback: first real paragraph (Wikipedia fix)
+        if not desc:
+            for p in soup.find_all("p"):
+                text = p.get_text(" ", strip=True)
+                if len(text) > 120:
+                    desc = text
+                    break
+
+        return title, desc
+
+    except Exception:
+        return "", ""
 
 # ============================================================
 # MENU
@@ -717,19 +954,22 @@ class DarkelfCLI:
             ident = d.get("identifier", "")
             table.add_row(str(i), t, mt, year, ident)
         console.print(table)
+        
+# -----------------------
+# Web Search flow
+# -----------------------
 
-    # -----------------------
-    # Web Search flow
-    # -----------------------
     def web_search_flow(self):
         clear()
         self.banner()
         q = input("Web search for> ").strip()
         if not q:
             return
+
         self.last_query = q
         results = self.searcher.search(q, max_results=12)
         self.last_web_results = results
+
         if not results:
             console.print("No results.")
             press_enter()
@@ -740,14 +980,30 @@ class DarkelfCLI:
         sel = input("\nOpen # (or Enter to go back)> ").strip()
         if sel == "":
             return
+
         if is_int(sel):
             idx = int(sel) - 1
             if 0 <= idx < len(results):
                 title, url = results[idx]
+
                 clear()
                 self.banner()
-                console.print(Panel(url, title=title, border_style="green"))
-                press_enter("Press Enter to return to menu...")
+                    
+                # Fetch page preview
+                page_title, page_desc = fetch_page_preview(url)
+
+                body_lines = [url]
+                if page_desc:
+                    body_lines.append("")
+                    body_lines.append(page_desc)
+
+                header = page_title or title
+                divider = "─" * len(header)
+                
+                joined_body = "\n".join(body_lines)
+                
+                open_page(url)
+
             else:
                 console.print("Invalid selection.")
                 press_enter()
@@ -1154,3 +1410,4 @@ Android Device: {device}
 
 if __name__ == "__main__":
     DarkelfCLI().run()
+

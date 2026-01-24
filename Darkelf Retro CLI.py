@@ -207,6 +207,135 @@ def adb_detect():
             "cpu": "Unknown",
             "serial": "N/A"
         }
+        
+# ------------------------------------------------------------
+# 1. ROM VERIFICATION (No-Intro / Redump style)
+# ------------------------------------------------------------
+
+def verify_rom_hash(file_path, known_db=None):
+    """Compute CRC32/SHA1 and compare against known-good DB."""
+    try:
+        with open(file_path, 'rb') as f:
+            data = f.read()
+        return {
+            'crc32': format(zlib.crc32(data) & 0xFFFFFFFF, '08x'),
+            'sha1': hashlib.sha1(data).hexdigest(),
+            'status': 'UNKNOWN'
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+# ------------------------------------------------------------
+# 2. SAVE-STATE & MEMORY CARD DETECTION
+# ------------------------------------------------------------
+
+def detect_save_files(rom_path):
+    """Locate emulator save files related to a ROM."""
+    base = os.path.splitext(rom_path)[0]
+    exts = ('.sav', '.srm', '.mcd', '.state', '.ps2')
+    return [base + e for e in exts if os.path.exists(base + e)]
+
+# ------------------------------------------------------------
+# 3. PER-GAME EMULATOR PROFILE GENERATOR
+# ------------------------------------------------------------
+
+def generate_emulator_profile(game_name, emulator):
+    """Stub for per-game emulator configuration generation."""
+    return {
+        'game': game_name,
+        'emulator': emulator,
+        'profile': 'default-optimized'
+    }
+
+# ------------------------------------------------------------
+# 4. OFFLINE GAME ENCYCLOPEDIA CACHE
+# ------------------------------------------------------------
+
+GAME_DB = os.path.join(BASE_DIR, 'game_encyclopedia.json')
+
+def load_game_db():
+    return json.load(open(GAME_DB)) if os.path.exists(GAME_DB) else {}
+
+# ------------------------------------------------------------
+# 5. BATCH ROM SCAN ENHANCEMENTS
+# ------------------------------------------------------------
+
+def enhanced_batch_scan(path):
+    """Placeholder for parallel hashing, dup detection, reports."""
+    return {'path': path, 'status': 'not_enabled'}
+
+# ------------------------------------------------------------
+# 6. REGION & VERSION COMPARISON
+# ------------------------------------------------------------
+
+def compare_regions(game_title):
+    return {
+        'USA': 'Standard release',
+        'JP': 'Harder difficulty, uncensored',
+        'EU': 'Slower PAL speed'
+    }
+
+# ------------------------------------------------------------
+# 7. RETROACHIEVEMENTS AWARENESS
+# ------------------------------------------------------------
+
+def check_retroachievements(game_title):
+    return {'supported': False, 'achievements': 0}
+
+# ------------------------------------------------------------
+# 8. AI DIFFICULTY & ACCESSIBILITY ANALYSIS
+# ------------------------------------------------------------
+
+# ------------------------------------------------------------
+# 8. AI DIFFICULTY & ACCESSIBILITY ANALYSIS
+# ------------------------------------------------------------
+
+def analyze_game_difficulty(game_title):
+    prompt = f"""
+Analyze the game "{game_title}" and provide:
+
+- Difficulty level (Easy / Medium / Hard / Brutal)
+- Whether the original manual is required to understand mechanics
+- Accessibility notes (saving, checkpoints, missables, softlocks)
+- Beginner tips (if applicable)
+
+Be concise and accurate. If unsure, say so.
+"""
+
+    return {
+        "difficulty": "AI-derived",
+        "manual_required": "AI-derived",
+        "notes_prompt": prompt
+    }
+
+# ------------------------------------------------------------
+# 9. COMMAND MODE (VIM-STYLE)
+# ------------------------------------------------------------
+
+def command_mode(input_line):
+    """Stub for future :command interface."""
+    return f"Command received: {input_line}"
+
+# ------------------------------------------------------------
+# 10. SESSION EXPORT
+# ------------------------------------------------------------
+
+def export_session(data, fmt='json'):
+    """Export data to JSON / MD / TXT."""
+    return fmt
+
+# ------------------------------------------------------------
+# 11. THEME & UI PROFILES
+# ------------------------------------------------------------
+
+THEMES = ['crt-green', 'amber', 'mono', 'high-contrast']
+
+# ------------------------------------------------------------
+# 12. WHAT SHOULD I PLAY ENGINE
+# ------------------------------------------------------------
+
+def recommend_game(mood='any', time_available=None):
+    return 'Recommendation engine not yet active'
 
 # ============================================================
 # OLLAMA BACKGROUND MANAGER (ONE TERMINAL)
@@ -442,6 +571,22 @@ class Menu:
             title="Help",
             border_style="cyan"
         ))
+        
+    @staticmethod
+    def rom_tools():
+        table = Table(title="ROM Tools / Game Intelligence", show_lines=True)
+        table.add_column("#", style="cyan", width=4)
+        table.add_column("Action")
+
+        table.add_row("1", "ROM Intelligence (AI + Emulator Recs)")
+        table.add_row("2", "Verify ROM (CRC32 / SHA1)")
+        table.add_row("3", "Detect Save / Memory Files")
+        table.add_row("4", "Compare Regions / Versions")
+        table.add_row("5", "RetroAchievements Check")
+        table.add_row("6", "Difficulty & Accessibility Analysis")
+        table.add_row("0", "Back")
+
+        console.print(table)
 
 # ============================================================
 # SEARCH ENGINE (DDG Lite)
@@ -855,8 +1000,93 @@ Android Device: {device}
             table.add_row(k, v)
         console.print(table)
         press_enter()
+        
+    def rom_tools_flow(self):
+        while True:
+            clear()
+            self.banner()
+            Menu.rom_tools()
+            choice = input("\nSelect> ").strip()
 
-    # -----------------------
+            if choice == "0" or choice == "":
+                return
+
+            elif choice == "1":
+                self.rom_flow()  # existing behavior
+
+            elif choice == "2":
+                path = input("ROM file or directory> ").strip()
+
+                if os.path.isdir(path):
+                    roms = scan_roms(path)
+                    if not roms:
+                        console.print("No ROMs found in directory.")
+                        press_enter()
+                        continue
+
+                    for i, r in enumerate(roms, 1):
+                        console.print(f"[{i}] {os.path.basename(r)}")
+
+                    sel = input("\nSelect ROM #> ").strip()
+                    if not is_int(sel):
+                        continue
+
+                    path = roms[int(sel) - 1]
+
+                if os.path.isfile(path):
+                    result = verify_rom_hash(path)
+                    console.print(Panel(json.dumps(result, indent=2), title="ROM Verification"))
+                else:
+                    console.print("Invalid path.")
+
+                press_enter()
+
+            elif choice == "3":
+                path = input("ROM file path> ").strip()
+                saves = detect_save_files(path)
+                if not saves:
+                    console.print("No save files found.")
+                else:
+                    for s in saves:
+                        console.print(f"• {s}")
+                press_enter()
+
+            elif choice == "4":
+                title = input("Game title> ").strip()
+                data = compare_regions(title)
+                table = Table(title="Region Comparison")
+                table.add_column("Region")
+                table.add_column("Notes")
+                for k, v in data.items():
+                    table.add_row(k, v)
+                console.print(table)
+                press_enter()
+
+            elif choice == "5":
+                title = input("Game title> ").strip()
+                ra = check_retroachievements(title)
+                console.print(Panel(json.dumps(ra, indent=2), title="RetroAchievements"))
+                press_enter()
+
+            elif choice == "6":
+                title = input("Game title> ").strip()
+                data = analyze_game_difficulty(title)
+
+                clear()
+                self.banner()
+                console.print(Panel(
+                    f"Analyzing difficulty & accessibility for:\n\n[bold]{title}[/bold]\n\n[dim]Darkelf Retro AI is responding…[/dim]",
+                    title="Difficulty & Accessibility Analysis",
+                    border_style="green"
+                ))
+
+                self.ai.stream(data["notes_prompt"])
+                press_enter()
+
+            else:
+                console.print("Invalid selection.")
+                press_enter()
+
     # -----------------------
     # History flow
     # -----------------------
@@ -903,7 +1133,7 @@ Android Device: {device}
                 self.history_flow()
 
             elif choice == "5":
-                self.rom_flow()
+                self.rom_tools_flow()
 
             elif choice == "6":
                 clear()

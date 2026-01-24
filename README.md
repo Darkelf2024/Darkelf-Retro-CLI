@@ -40,15 +40,18 @@ Each tool can be used **independently**, but they are designed to work best as a
 
 ---
 
-## 🕹️ Darkelf Retro CLI
+## 🕹️ Darkelf Retro CLI (Full Research Suite)
 
-**Darkelf Retro CLI** is a launcher-style, keyboard-driven interface for retro gaming research.
+**Darkelf Retro CLI** is a launcher-style, keyboard-driven interface that serves as the **complete Darkelf Retro research suite**.
+
+It integrates **web research, archival access, local history, and Darkelf Retro AI** into a single, cohesive terminal workflow.
 
 ### What it does
 - Text-only web research
 - Curated archival access
-- Persistent local history
+- Persistent local search history
 - Fast, numbered navigation
+- Integrated **Darkelf Retro AI**
 - Zero tracking, zero accounts
 
 ### Key Features
@@ -58,23 +61,29 @@ Each tool can be used **independently**, but they are designed to work best as a
   - Internet Archive (manuals, magazines, guides)  
   - Video Game History Foundation (metadata & catalog research)
 - **Search History**  
-  Automatically saved locally for revisiting past research.
+  Automatically saved locally for efficient revisits.
+- **Darkelf Retro AI Integration**  
+  Ask focused retro-gaming questions without leaving the CLI.
 - **Terminal-Native UX**  
   No mouse, no clutter—just fast, intentional navigation.
 
-This tool acts as your **research control panel**.
+**Darkelf Retro CLI is the primary entry point** and is recommended for most users.  
+It acts as your **research control panel**.
 
 ---
 
-## 🤖 Darkelf Retro AI
+## 🤖 Darkelf Retro AI (Standalone / Slim Edition)
 
-**Darkelf Retro AI** is a **local, streaming AI assistant** specialized exclusively in retro gaming history.
+**Darkelf Retro AI** is a **standalone, slimmed-down version** of the AI component included in Darkelf Retro CLI.
+
+It is designed for users who want **direct access to the AI only**, without the full research interface.
 
 ### What makes it different
 - Runs **100% locally** using **Ollama**
 - No cloud APIs
 - No data collection
-- No hallucination-heavy chatbot behavior
+- No web search or archive navigation
+- No history or launcher system
 
 ### Focus Areas
 - Retro consoles & home computers  
@@ -87,7 +96,12 @@ This tool acts as your **research control panel**.
 The AI is intentionally scoped:  
 **it does not emulate games, download ROMs, or bypass copyright**.
 
-Think of it as a **research companion**, not a general chatbot.
+### When to use it
+- You only want the AI component
+- You prefer a minimal, single-purpose tool
+- You plan to integrate it into your own workflow
+
+Think of **Darkelf Retro AI** as a **lightweight research companion**, while **Darkelf Retro CLI** is the **complete research environment**.
 
 ---
 

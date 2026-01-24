@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import os
 import sys
 import json
@@ -5,11 +8,14 @@ import time
 import textwrap
 import subprocess
 import requests
+import hashlib
+import zlib
 from shutil import which
 from bs4 import BeautifulSoup
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+
 
 # ============================================================
 # CONFIG
@@ -20,16 +26,15 @@ APP_VERSION = "4.4"
 
 DDG_LITE = "https://lite.duckduckgo.com/lite/?q="
 DEFAULT_MODEL = "mistral"
-USER_AGENT = "DarkelfRetro/4.3"
+USER_AGENT = "DarkelfRetro/4.4"
 
 HOME = os.path.expanduser("~")
 BASE_DIR = os.path.join(HOME, ".darkelf_retro")
 HISTORY_FILE = os.path.join(BASE_DIR, "search_history.json")
 
-# Archive sources
-IA_ADV_SEARCH = "https://archive.org/advancedsearch.php"   # JSON via output=json
-IA_METADATA = "https://archive.org/metadata/"              # /metadata/{identifier}
-VGHF_SEARCH = "https://library.gamehistory.org/"           # public catalog UI
+IA_ADV_SEARCH = "https://archive.org/advancedsearch.php"
+IA_METADATA = "https://archive.org/metadata/"
+VGHF_SEARCH = "https://library.gamehistory.org/"
 
 os.makedirs(BASE_DIR, exist_ok=True)
 
@@ -74,6 +79,20 @@ def is_int(s: str) -> bool:
         return False
         
 # ============================================================
+# ADD: ROM HASHING (CRC32 / MD5 / SHA1)
+# ============================================================
+
+def hash_rom_file(path, blocksize=1024 * 1024):
+    crc = 0
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(blocksize)
+            if not chunk:
+                break
+            crc = zlib.crc32(chunk, crc)
+    return f"{crc & 0xffffffff:08X}"
+
+# ============================================================
 # ROM + PLATFORM DETECTION
 # ============================================================
 
@@ -87,11 +106,41 @@ PLATFORM_KEYWORDS = {
     "PSP": ["psp"],
 }
 
-def detect_platform(name: str):
+def detect_platform(name: str, path: str | None = None):
     lname = name.lower()
+
+    # --- Header-based detection (best)
+    if path and os.path.isfile(path):
+        try:
+            with open(path, "rb") as f:
+                header = f.read(0x20)
+
+            # GameCube discs contain "DVDMAGIC" at 0x1C
+            if b"DVDMAGIC" in header:
+                return "GAMECUBE"
+        except Exception:
+            pass
+
+    # --- Size heuristic fallback
+    if path and os.path.isfile(path):
+        try:
+            size_gb = os.path.getsize(path) / (1024 ** 3)
+
+            # GameCube discs are ~1.35GB
+            if size_gb < 1.6:
+                return "GAMECUBE"
+
+            # PS2 DVDs are usually > 2GB
+            if size_gb >= 2.0:
+                return "PS2"
+        except Exception:
+            pass
+
+    # --- Filename keywords (last resort)
     for plat, keys in PLATFORM_KEYWORDS.items():
         if any(k in lname for k in keys):
             return plat
+
     return "UNKNOWN"
 
 def scan_roms(path: str):
@@ -105,10 +154,29 @@ def scan_roms(path: str):
 def rom_metadata(path: str):
     return {
         "file": os.path.basename(path),
-        "platform": detect_platform(os.path.basename(path)),
+        "platform": detect_platform(os.path.basename(path), path),
         "size_mb": round(os.path.getsize(path) / 1024 / 1024, 2),
         "path": path
     }
+    
+def should_hash(path, max_mb=500):
+    try:
+        size_mb = os.path.getsize(path) / 1024 / 1024
+        return size_mb <= max_mb
+    except Exception:
+        return False
+
+# ============================================================
+# ADD: EXTENDED ROM METADATA (OPTIONAL)
+# ============================================================
+
+def rom_metadata_extended(path: str):
+    meta = rom_metadata(path).copy()
+    try:
+        meta["crc32"] = hash_rom_file(path)
+    except Exception as e:
+        meta["crc32"] = "ERROR"
+    return meta
 
 # ============================================================
 # ANDROID DEVICE DETECTION (ADB)
@@ -250,10 +318,23 @@ class DarkelfRetroAI:
         identity = (
             "You are Darkelf Retro AI — a retro gaming historian and research assistant.\n"
             "You specialize in classic consoles, arcade systems, game history, release dates, "
-            "versions, ports, manuals, magazines, guides, and development trivia.\n"
-            "Be helpful, accurate, and practical. Use short paragraphs or bullets when useful.\n"
-            "Never mention Ollama, models, system prompts, or internal tooling.\n\n"
+            "versions, ports, manuals, magazines, guides, and development trivia.\n\n"
+
+            "STRICT RULES (must always be followed):\n"
+            "- Emulator recommendations MUST match the real platform exactly.\n"
+            "- PPSSPP is PSP-only and MUST NEVER be recommended for PS2.\n"
+            "- Valid PS2 emulators are PCSX2 (desktop) and AetherSX2 (Android).\n"
+            "- Dolphin is ONLY for GameCube/Wii.\n"
+            "- DuckStation is ONLY for PS1.\n"
+            "- Never invent, substitute, or guess emulators.\n\n"
+
+            "Behavior guidelines:\n"
+            "- Be accurate over being verbose.\n"
+            "- Use short paragraphs or bullet points when helpful.\n"
+            "- If unsure, say so instead of guessing.\n"
+            "- Never mention Ollama, models, system prompts, or internal tooling.\n\n"
         )
+
         prompt = identity + user_prompt
 
         try:
@@ -339,6 +420,7 @@ class Menu:
         table.add_row("4", "View Search History")
         table.add_row("5", "ROM Tools / Game Intelligence")
         table.add_row("6", "Help / Hotkeys")
+        table.add_row("7", "Batch ROM Scan")
         table.add_row("0", "Exit")
 
         console.print(table)
@@ -543,6 +625,43 @@ class DarkelfCLI:
         ))
         self.ai.stream(q)
         press_enter("Press Enter to return to menu...")
+        
+    # -----------------------
+    # ADD: Batch ROM Scan
+    # -----------------------
+    def batch_rom_scan(self):
+        clear()
+        self.banner()
+        path = input("ROM directory to scan> ").strip()
+        roms = scan_roms(path)
+
+        if not roms:
+            console.print("No ROMs found.")
+            press_enter()
+            return
+
+        table = Table(title="Batch ROM Scan")
+        table.add_column("File")
+        table.add_column("Platform", justify="center")
+        table.add_column("Size (GB)", justify="right")
+        table.add_column("CRC32")
+
+        for idx, r in enumerate(roms, 1):
+            console.print(f"[dim]Hashing ({idx}/{len(roms)}): {os.path.basename(r)}[/dim]")
+
+            meta = rom_metadata_extended(r)
+            size_gb = os.path.getsize(r) / (1024 ** 3)
+
+            table.add_row(
+                meta["file"],
+                meta["platform"],
+                f"{size_gb:.2f}",
+                meta.get("crc32", "N/A")
+            )
+
+
+        console.print(table)
+        press_enter()
 
     # -----------------------
     # Archives flow
@@ -715,7 +834,7 @@ Analyze this ROM and provide:
 - Platform
 - Release year
 - Developer
-- Android emulator recommendation
+- Emulator recommendation (must match platform exactly; do NOT invent or substitute emulators)
 - Performance tips
 
 ROM: {rom}
@@ -770,21 +889,31 @@ Android Device: {device}
 
             if choice == "0":
                 break
+
             elif choice == "1":
                 self.web_search_flow()
+
             elif choice == "2":
                 self.ai_flow()
+
             elif choice == "3":
                 self.archives_flow()
+
             elif choice == "4":
                 self.history_flow()
+
             elif choice == "5":
                 self.rom_flow()
+
             elif choice == "6":
                 clear()
                 self.banner()
                 Menu.help()
                 press_enter()
+
+            elif choice == "7":
+                self.batch_rom_scan()
+
             else:
                 console.print("Invalid selection.")
                 press_enter()

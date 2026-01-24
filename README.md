@@ -3,12 +3,24 @@
 
 **Darkelf Retro CLI Hub** is a local-first, command-line research environment designed for retro gaming historians, collectors, preservationists, and enthusiasts.
 
-This repository contains **two complementary terminal tools**:
+This repository contains **two complementary terminal tools** (click to view/download):
 
 - **Darkelf Retro CLI** – a structured, menu-driven retro gaming research interface  
+  - Source: **[Darkelf Retro CLI.py](Darkelf%20Retro%20CLI.py)**
 - **Darkelf Retro AI** – a focused, local AI research assistant for classic games and hardware  
+  - Source: **[Darkelf Retro Ai.py](Darkelf%20Retro%20Ai.py)**
 
 Together, they form a distraction-free, ethics-first workflow for exploring the history, documentation, and cultural context of classic video games—directly from your terminal.
+
+---
+
+## 🔗 Quick Links
+
+- ▶️ **Run the main tool:** **[Darkelf Retro CLI.py](Darkelf%20Retro%20CLI.py)**
+- 🤖 **Run the assistant:** **[Darkelf Retro Ai.py](Darkelf%20Retro%20Ai.py)**
+- ⚖️ **License:** LGPL (see `LICENSE` / `LICENSE.md` in this repo)
+
+> Tip: On GitHub, click a file → **Download raw file** (or use the `raw` view) to save it locally.
 
 ---
 

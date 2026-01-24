@@ -1,87 +1,158 @@
-# Darkelf Retro CLI Tools
+# 🧙‍♂️ Darkelf Retro CLI Hub  
+*A terminal-native research toolkit for retro gaming history*
 
-Darkelf Retro CLI is a local-first, terminal-based retro gaming research environment. Designed for historians, collectors, and enthusiasts, it provides fast, focused access to classic game information directly from the command line.
+**Darkelf Retro CLI Hub** is a local-first, command-line research environment designed for retro gaming historians, collectors, preservationists, and enthusiasts.
 
-This tool combines text-based web search, official retro game archives, and a local streaming AI assistant called **Darkelf Retro AI**, delivering a seamless terminal experience for retro gaming research.
+This repository contains **two complementary terminal tools**:
 
----
+- **Darkelf Retro CLI** – a structured, menu-driven retro gaming research interface  
+- **Darkelf Retro AI** – a focused, local AI research assistant for classic games and hardware  
 
-## Features
-
-### Retro Gaming Research
-- **Web Search**: DuckDuckGo Lite integration for clean, text-only results.
-- **Navigation**: Simple number-based navigation.
-- **Search History**: Persistent local history for efficient revisits.
-
-### Darkelf Retro AI
-- **AI Integration**: Fully local AI powered by **Ollama**.
-- **Focused Responses**: Streaming insights tailored to retro consoles, arcade systems, manuals, magazines, and game history.
-- **Terminal-First**: Runs within the same terminal session.
-
-### Retro Game Archives
-- **Internet Archive**: Access manuals, guides, and magazines from the Internet Archive.
-- **Video Game History Foundation**: Discover metadata and research from the VGHF catalog.
-- **Ethical Use**: Metadata and research only—no ROM downloads.
+Together, they form a distraction-free, ethics-first workflow for exploring the history, documentation, and cultural context of classic video games—directly from your terminal.
 
 ---
 
-## Design Philosophy
+## 🗂 Repository Overview
 
-**Darkelf Retro CLI** adheres to a local-first, terminal-native approach, prioritizing clarity, research, and respect for archival sources. 
-
-This tool is for serious retro gaming research—it’s not a chatbot or emulator.
-
----
-
-## Requirements
-
-- **Operating System**: macOS or Linux (Windows may require minor tweaks).
-- **Python**: Version 3.9 or newer.
-- **Python Packages**:
-  - `requests`
-  - `beautifulsoup4`
-  - `rich`
-- **Ollama AI**: Installed locally with the `mistral` model.
-
----
-
-## Installation
-
-Install Python dependencies, fetch the Ollama model, and launch the CLI:
-
-```bash
-pip install requests beautifulsoup4 rich
-ollama pull mistral
-python Darkelf_Retro_CLI.py
+```
+Darkelf-Retro-CLI/
+├── Darkelf Retro CLI.py      # Main retro research CLI
+├── Darkelf Retro Ai.py       # Local streaming AI assistant
+├── README.md                # Project hub documentation
+├── LICENSE.md
+└── assets/
+    └── screenshots, logos
 ```
 
----
-
-## Usage
-
-Darkelf Retro CLI provides a keyboard-driven, launcher-style interface. Options include:
-
-- Web search
-- AI-powered questions
-- Retro archives lookup
-- Search history review
-
-Simple, number-based selections guide the user through navigation.
+Each tool can be used **independently**, but they are designed to work best as a pair.
 
 ---
 
-## License and Ethics
+## 🕹️ Darkelf Retro CLI
 
-**Darkelf Retro CLI** is intended strictly for educational and research purposes. Users must adhere to:
+**Darkelf Retro CLI** is a launcher-style, keyboard-driven interface for retro gaming research.
 
-- Internet Archive terms and conditions.
-- VGHF (Video Game History Foundation) guidelines.
-- Applicable copyright laws.
+### What it does
+- Text-only web research
+- Curated archival access
+- Persistent local history
+- Fast, numbered navigation
+- Zero tracking, zero accounts
+
+### Key Features
+- **Web Search**  
+  Clean DuckDuckGo Lite queries for distraction-free results.
+- **Retro Archives**  
+  - Internet Archive (manuals, magazines, guides)  
+  - Video Game History Foundation (metadata & catalog research)
+- **Search History**  
+  Automatically saved locally for revisiting past research.
+- **Terminal-Native UX**  
+  No mouse, no clutter—just fast, intentional navigation.
+
+This tool acts as your **research control panel**.
 
 ---
 
-## Closing
+## 🤖 Darkelf Retro AI
 
-**Darkelf Retro CLI** is crafted for those who appreciate the joy of thumbing through old manuals, uncovering forgotten magazine articles, and delving into the history of why classic games were made the way they were.
+**Darkelf Retro AI** is a **local, streaming AI assistant** specialized exclusively in retro gaming history.
 
-Rediscover the golden age of gaming—right from your terminal.
+### What makes it different
+- Runs **100% locally** using **Ollama**
+- No cloud APIs
+- No data collection
+- No hallucination-heavy chatbot behavior
+
+### Focus Areas
+- Retro consoles & home computers  
+- Arcade systems  
+- Game manuals & documentation  
+- Magazines & developer interviews  
+- Hardware limitations & design decisions  
+- Historical and cultural context  
+
+The AI is intentionally scoped:  
+**it does not emulate games, download ROMs, or bypass copyright**.
+
+Think of it as a **research companion**, not a general chatbot.
+
+---
+
+## 🧠 Design Philosophy
+
+Darkelf Retro tools are built around a few core principles:
+
+- **Local-First** – Your research stays on your machine  
+- **Terminal-Native** – Designed for CLI users, not web dashboards  
+- **Archival Respect** – Metadata and documentation only  
+- **Focused Scope** – No feature creep, no gimmicks  
+- **Ethical Use** – Preservation, not piracy  
+
+This is software for people who enjoy reading old manuals, studying magazine scans, and understanding *why* games were built the way they were.
+
+---
+
+## ⚙️ Requirements
+
+- **Operating System**:  
+  - macOS or Linux  
+  - Windows may work with minor adjustments
+- **Python**: 3.9+
+- **Python Packages**:
+  ```bash
+  pip install requests beautifulsoup4 rich
+  ```
+- **Ollama** (for Darkelf Retro AI):
+  ```bash
+  ollama pull mistral
+  ```
+
+---
+
+## 🚀 Installation & Launch
+
+Clone the repository:
+```bash
+git clone https://github.com/Darkelf2024/Darkelf-Retro-CLI.git
+cd Darkelf-Retro-CLI
+```
+
+### Run Darkelf Retro CLI
+```bash
+python "Darkelf Retro CLI.py"
+```
+
+### Run Darkelf Retro AI
+```bash
+python "Darkelf Retro Ai.py"
+```
+
+You can run them in **separate terminals** or side-by-side using tmux for a true retro research workflow.
+
+---
+
+## 📜 License & Ethics
+
+This project is intended **strictly for educational and research purposes**.
+
+Users are responsible for complying with:
+- Internet Archive terms of use
+- Video Game History Foundation guidelines
+- Local and international copyright laws
+
+**No ROM distribution. No emulation. No circumvention.**
+
+---
+
+## 🧙 Closing Thoughts
+
+**Darkelf Retro CLI Hub** is for people who still remember:
+- Reading game manuals cover to cover
+- Learning hardware quirks the hard way
+- Discovering secrets through magazines and word of mouth
+
+If you care about **preservation, history, and understanding**, not just nostalgia—  
+you’re exactly who this tool was made for.
+
+*Rediscover the golden age of gaming—one terminal command at a time.*

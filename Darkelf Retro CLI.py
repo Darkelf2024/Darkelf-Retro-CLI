@@ -291,17 +291,13 @@ def hash_rom_file(path, blocksize=1024 * 1024):
     return f"{crc & 0xffffffff:08X}"
 
 # ============================================================
-# (rest of file unchanged)
-# ============================================================
-
-# ============================================================
 # ROM + PLATFORM DETECTION
 # ============================================================
 
 PLATFORM_KEYWORDS = {
-    "PS2": ["ps2", "playstation 2"],
-    "PS1": ["psx", "ps1", "playstation"],
-    "GAMECUBE": ["gamecube", "gc"],
+    "PS2": ["ps2", "playstation 2", "(ps2)"],  # Add PS2-specific markers
+    "PS1": ["psx", "ps1", "ps", "playstation"],
+    "GAMECUBE": ["gamecube", "gc", "(gc)"],
     "WII": ["wii"],
     "DREAMCAST": ["dreamcast", "dc"],
     "SATURN": ["saturn"],
@@ -309,9 +305,19 @@ PLATFORM_KEYWORDS = {
 }
 
 def detect_platform(name: str, path: str | None = None):
+    import zlib
     lname = name.lower()
 
-    # --- Header-based detection (best)
+    # --- CRC/Hash-based detection (most reliable)
+    if path and os.path.isfile(path):
+        try:
+            rom_hash = hash_rom_file(path)
+            if rom_hash in ROM_HASHES:
+                return ROM_HASHES[rom_hash]
+        except Exception:
+            pass
+
+    # --- Header-based detection (secondary)
     if path and os.path.isfile(path):
         try:
             with open(path, "rb") as f:
@@ -320,29 +326,35 @@ def detect_platform(name: str, path: str | None = None):
             # GameCube discs contain "DVDMAGIC" at 0x1C
             if b"DVDMAGIC" in header:
                 return "GAMECUBE"
-        except Exception:
-            pass
 
-    # --- Size heuristic fallback
-    if path and os.path.isfile(path):
-        try:
-            size_gb = os.path.getsize(path) / (1024 ** 3)
-
-            # GameCube discs are ~1.35GB
-            if size_gb < 1.6:
-                return "GAMECUBE"
-
-            # PS2 DVDs are usually > 2GB
-            if size_gb >= 2.0:
+            # PS2 discs often contain "PLAYSTATION" or "PLAYSTATION 2" in their headers
+            if b"PLAYSTATION" in header:
                 return "PS2"
         except Exception:
             pass
 
-    # --- Filename keywords (last resort)
+    # --- Filename keywords (optional fallback)
     for plat, keys in PLATFORM_KEYWORDS.items():
         if any(k in lname for k in keys):
             return plat
 
+    # --- Size heuristic fallback (least reliable)
+    if path and os.path.isfile(path):
+        try:
+            size_gb = os.path.getsize(path) / (1024 ** 3)
+
+            # GameCube discs are exactly ~1.35GB
+            if 1.3 <= size_gb <= 1.6:
+                return "GAMECUBE"
+
+            # PS2 DVDs are usually between 2GB and 8.5GB (dual-layer size limit)
+            if 2.0 <= size_gb <= 8.5:
+                return "PS2"
+
+        except Exception:
+            pass
+
+    # If no match, return UNKNOWN
     return "UNKNOWN"
 
 def scan_roms(path: str):

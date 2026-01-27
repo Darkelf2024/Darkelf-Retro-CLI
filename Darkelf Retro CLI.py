@@ -251,7 +251,7 @@ APP_VERSION = "4.7"
 
 DDG_LITE = "https://lite.duckduckgo.com/lite/?q="
 DEFAULT_MODEL = "mistral"
-USER_AGENT = "DarkelfRetro/4.4"
+USER_AGENT = "DarkelfRetro/4.7"
 
 HOME = os.path.expanduser("~")
 BASE_DIR = os.path.join(HOME, ".darkelf_retro")

@@ -1,25 +1,15 @@
-#!/usr/bin/env python3
-# Darkelf Retro AI — Enhanced Edition
-
-import os
 import sys
-import json
-import time
 import requests
 import subprocess
-import threading
-import webbrowser
-from collections import deque
 from dataclasses import dataclass
 from typing import List, Optional
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
-from rich.live import Live
-from rich.text import Text
 from rich.prompt import Prompt
-from rich.spinner import Spinner
+from rich.table import Table
+from rich.text import Text
+from rich.live import Live
 
 # =========================
 # GLOBALS / CONSTANTS
@@ -32,8 +22,8 @@ OLLAMA_MODEL = "llama3"
 console = Console()
 
 online = False
-last_results = []
-last_query = None
+last_results: List["Result"] = []
+last_query: Optional[str] = None
 ai_memory = []
 
 ASCII_ART = r"""
@@ -46,7 +36,7 @@ ASCII_ART = r"""
 """
 
 # =========================
-# NETWORK CHECK
+# NETWORK
 # =========================
 
 def check_online():
@@ -72,7 +62,7 @@ def network_status():
 @dataclass
 class Result:
     title: str
-    url: str
+    identifier: str
     year: Optional[str] = None
     mediatype: Optional[str] = None
 
@@ -98,9 +88,9 @@ def archive_search(query: str, rows=10) -> List[Result]:
         results.append(
             Result(
                 title=d.get("title", "Unknown"),
+                identifier=d.get("identifier"),
                 year=d.get("year"),
                 mediatype=d.get("mediatype"),
-                url=f"https://archive.org/details/{d.get('identifier')}"
             )
         )
     return results
@@ -112,8 +102,7 @@ def archive_search(query: str, rows=10) -> List[Result]:
 def show_results(results: List[Result]):
     if not results:
         console.print("\n[bold red]NO RESULTS FOUND[/bold red]")
-        console.print("[dim]The Internet Archive returned zero matches.[/dim]")
-        console.print("[dim]Try broader keywords or a different query.[/dim]\n")
+        console.print("[dim]Try a broader search term.[/dim]\n")
         return
 
     table = Table(
@@ -137,7 +126,43 @@ def show_results(results: List[Result]):
         )
 
     console.print(table)
-    console.print("[dim]Shortcuts: [a] ask AI | [o] open | [q] back[/dim]")
+    console.print("[dim]Enter number = view | a = AI | q = back[/dim]")
+
+# =========================
+# TERMINAL ITEM VIEWER
+# =========================
+
+def view_item_text(r: Result):
+    console.clear()
+    console.print(ASCII_ART, style="green")
+
+    try:
+        data = requests.get(
+            f"https://archive.org/metadata/{r.identifier}",
+            timeout=10
+        ).json()
+
+        meta = data.get("metadata", {})
+        title = meta.get("title", "Unknown")
+        description = meta.get("description", "No description available.")
+        year = meta.get("year", "")
+        mediatype = meta.get("mediatype", "")
+
+        console.print(Panel(
+            f"[bold cyan]{title}[/bold cyan]\n\n"
+            f"[bold]Year:[/bold] {year}\n"
+            f"[bold]Type:[/bold] {mediatype}\n\n"
+            f"[bold]Description:[/bold]\n{description}",
+            title="Archive Item",
+            border_style="green",
+            expand=True
+        ))
+
+    except Exception as e:
+        console.print("[red]Failed to load item details[/red]")
+        console.print(str(e))
+
+    Prompt.ask("[dim]Press Enter to return[/dim]", default="")
 
 # =========================
 # AI ENGINE
@@ -148,7 +173,7 @@ def ai_stream(prompt: str, mode="FREEFORM"):
 You are Darkelf Retro AI.
 Focus on retro computing, emulation, and digital preservation.
 Output Mode: {mode}
-Be concise, factual, and structured when possible.
+Be concise and factual.
 """
 
     full_prompt = identity + "\n\n" + prompt
@@ -165,33 +190,8 @@ Be concise, factual, and structured when possible.
         for line in proc.stdout:
             text.append(line)
 
-    ai_memory.append(prompt)
-
 # =========================
-# RESULT → AI HANDOFF
-# =========================
-
-def ask_about_result(r: Result):
-    mode = Prompt.ask(
-        "AI Mode",
-        choices=["FREEFORM", "FACT_SHEET", "TIMELINE"],
-        default="FACT_SHEET"
-    )
-
-    prompt = f"""
-Analyze this archival item:
-
-Title: {r.title}
-Year: {r.year}
-Type: {r.mediatype}
-URL: {r.url}
-
-Explain its historical relevance and technical context.
-"""
-    ai_stream(prompt, mode=mode)
-
-# =========================
-# MAIN MENU
+# MAIN MENU (FIXED)
 # =========================
 
 def main_menu():
@@ -199,7 +199,6 @@ def main_menu():
 
     while True:
         check_online()
-
         console.clear()
         console.print(ASCII_ART, style="green")
 
@@ -213,79 +212,78 @@ def main_menu():
             style="green"
         ))
 
-        choice = Prompt.ask("Select")
+        choice = Prompt.ask("Select").strip().lower()
 
+        # SEARCH
         if choice == "1":
             if not online:
-                console.print("[red]Offline mode — archive search unavailable[/red]")
-                Prompt.ask("[dim]Press Enter to continue[/dim]", default="")
+                console.print("[red]Offline — search unavailable[/red]")
+                Prompt.ask("Press Enter", default="")
                 continue
 
-            query = Prompt.ask("Search query")
-            last_query = query
+            last_query = Prompt.ask("Search query")
 
             with console.status("Searching archive...", spinner="dots"):
-                last_results = archive_search(query)
+                last_results = archive_search(last_query)
 
             show_results(last_results)
 
-            # 🔥 FIX: do NOT enter action loop if no results
             if not last_results:
-                Prompt.ask("[dim]Press Enter to return to menu[/dim]", default="")
+                Prompt.ask("Press Enter", default="")
                 continue
 
+            # 🔥 FIXED ACTION LOOP
             while True:
-                cmd = Prompt.ask("Action", default="q")
+                cmd = Prompt.ask("Action").strip().lower()
+
                 if cmd == "q":
                     break
-                elif cmd == "a":
-                    idx = int(Prompt.ask("Item number")) - 1
-                    if 0 <= idx < len(last_results):
-                        ask_about_result(last_results[idx])
-                elif cmd == "o":
-                    idx = int(Prompt.ask("Item number")) - 1
-                    if 0 <= idx < len(last_results):
-                        webbrowser.open(last_results[idx].url)
 
+                if cmd.isdigit():
+                    idx = int(cmd) - 1
+                    if 0 <= idx < len(last_results):
+                        view_item_text(last_results[idx])
+                        show_results(last_results)
+                    else:
+                        console.print("[red]Invalid item number[/red]")
+                    continue
+
+                if cmd == "a":
+                    idx = int(Prompt.ask("Item number")) - 1
+                    if 0 <= idx < len(last_results):
+                        ai_stream(
+                            f"Explain the historical significance of:\n{last_results[idx].title}"
+                        )
+                        show_results(last_results)
+                    else:
+                        console.print("[red]Invalid item number[/red]")
+                    continue
+
+                console.print("[red]Unknown command[/red]")
+
+        # ASK AI
         elif choice == "2":
             q = Prompt.ask("Ask Darkelf Retro AI")
             ai_stream(q)
 
+        # REPEAT SEARCH
         elif choice == "3":
             if last_query and online:
-                with console.status("Repeating last search...", spinner="dots"):
+                with console.status("Repeating search...", spinner="dots"):
                     last_results = archive_search(last_query)
                 show_results(last_results)
-
-                # 🔥 FIX: same guard here
-                if not last_results:
-                    Prompt.ask("[dim]Press Enter to return to menu[/dim]", default="")
+                Prompt.ask("Press Enter", default="")
             else:
                 console.print("[dim]No previous search or offline[/dim]")
-                Prompt.ask("[dim]Press Enter to continue[/dim]", default="")
+                Prompt.ask("Press Enter", default="")
 
         elif choice == "q":
             console.print("Goodbye.", style="bold green")
             sys.exit()
-
-        else:
-            console.print("[red]Invalid option[/red]")
-            Prompt.ask("[dim]Press Enter to continue[/dim]", default="")
-
-# =========================
-# BOOT SEQUENCE
-# =========================
-
-def boot():
-    console.clear()
-    console.print(ASCII_ART, style="green")
-    console.print("[dim]Darkelf Retro AI initializing…[/dim]\n")
-    Prompt.ask("[bold green]Press Enter to continue[/bold green]", default="")
 
 # =========================
 # ENTRY POINT
 # =========================
 
 if __name__ == "__main__":
-    boot()
     main_menu()

@@ -18,6 +18,7 @@ Together, they form a distraction-free, ethics-first workflow for exploring the 
 
 - ▶️ **Run the main tool:** **[Darkelf Retro CLI.py](Darkelf%20Retro%20CLI.py)**
 - 🤖 **Run the assistant:** **[Darkelf Retro Ai.py](Darkelf%20Retro%20Ai.py)**
+- **Ollama Setup Guide:** **[Ollama Setup Guide](https://github.com/Darkelf2024/Darkelf-Retro-CLI-Hub/blob/main/Ollama%20Setup%20Guide.md)**
 - ⚖️ **License:** LGPL (see `LICENSE` / `LICENSE.md` in this repo)
 
 > Tip: On GitHub, click a file → **Download raw file** (or use the `raw` view) to save it locally.
